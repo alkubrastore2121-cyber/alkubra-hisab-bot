@@ -23,7 +23,7 @@ async function getSheets() {
 async function getBalance(sheets, tab, name) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${tab}!A:F`,
+    range: `${tab}!A:G`,
   });
   const rows = res.data.values || [];
   let balance = 0;
@@ -39,7 +39,7 @@ async function getBalance(sheets, tab, name) {
 async function appendRow(sheets, tab, rowData) {
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID,
-    range: `${tab}!A:F`,
+    range: `${tab}!A:G`,
     valueInputOption: 'USER_ENTERED',
     resource: { values: [rowData] },
   });
@@ -49,7 +49,7 @@ async function appendRow(sheets, tab, rowData) {
 async function getStatement(sheets, tab, name) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${tab}!A:F`,
+    range: `${tab}!A:G`,
   });
   const rows = res.data.values || [];
   return rows.slice(1).filter(row => row[1] && row[1].toLowerCase() === name.toLowerCase());
