@@ -200,3 +200,8 @@ bot.on('message', async (msg) => {
 });
 
 console.log('AlKubra Hisab Bot started...');
+
+// Keep alive HTTP server for Render
+const http = require('http');
+http.createServer((req, res) => res.end('AlKubra Hisab Bot Running')).listen(process.env.PORT || 3000);
+console.log('HTTP server started on port', process.env.PORT || 3000);
