@@ -9,7 +9,6 @@
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
     "googleapis": "^140.0.0",
-    "jimp": "^0.22.12",
-    "@jimp/plugin-print": "^0.22.12"
+    "html-pdf-node": "^1.0.8"
   }
 }
