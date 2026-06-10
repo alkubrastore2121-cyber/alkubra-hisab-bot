@@ -1,8 +1,8 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { google } = require('googleapis');
-const { createCanvas, loadImage } = require('canvas');
 const fs = require('fs');
-const path = require('path');
+const https = require('https');
+const http = require('http');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const SHEET_ID = process.env.SHEET_ID;
@@ -55,183 +55,46 @@ async function getStatement(sheets, tab, name) {
   return rows.slice(1).filter(row => row[1] && row[1].toLowerCase() === name.toLowerCase());
 }
 
-// Generate Invoice Image
-async function generateInvoice(invoiceData) {
+// Generate Invoice as HTML then send as text-based bill
+function generateInvoiceText(invoiceData) {
   const { customerName, city, items, invoiceNo, date } = invoiceData;
   
-  const W = 600;
-  const headerH = 160;
-  const itemRowH = 44;
-  const footerH = 140;
-  const H = headerH + 60 + (items.length * itemRowH) + footerH;
-  
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
-  
-  // Background
-  ctx.fillStyle = '#FAFAF8';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Top gold bar
-  ctx.fillStyle = '#B8973A';
-  ctx.fillRect(0, 0, W, 5);
-  
-  // Bottom gold bar
-  ctx.fillStyle = '#B8973A';
-  ctx.fillRect(0, H - 5, W, 5);
-  
-  // Ghost K watermark
-  ctx.font = 'bold 200px serif';
-  ctx.fillStyle = 'rgba(184, 151, 58, 0.07)';
-  ctx.fillText('K', 20, 200);
-  
-  // Company name
-  ctx.fillStyle = '#1C1C1C';
-  ctx.font = 'bold 38px serif';
-  ctx.fillText('KUBRA', 40, 65);
-  
-  // Gold line under KUBRA
-  ctx.strokeStyle = '#B8973A';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(40, 75);
-  ctx.lineTo(340, 75);
-  ctx.stroke();
-  
-  // TRADERS
-  ctx.fillStyle = '#1C1C1C';
-  ctx.font = '400 18px serif';
-  ctx.letterSpacing = '10px';
-  ctx.fillText('T R A D E R S', 42, 98);
-  
-  // Tagline
-  ctx.fillStyle = '#888';
-  ctx.font = '11px Arial';
-  ctx.fillText('WHOLESALE  ·  BRANDED  ·  SECOND-HAND', 40, 118);
-  
-  // Phone & location
-  ctx.fillStyle = '#B8973A';
-  ctx.beginPath();
-  ctx.arc(40, 135, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#444';
-  ctx.font = '12px Arial';
-  ctx.fillText('+91 94275 65814  ·  Rajkot, Gujarat', 50, 139);
-  
-  // INVOICE label (right side)
-  ctx.fillStyle = '#B8973A';
-  ctx.font = 'bold 22px serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('INVOICE', W - 40, 55);
-  
-  ctx.fillStyle = '#666';
-  ctx.font = '12px Arial';
-  ctx.fillText(`No: ${invoiceNo}`, W - 40, 76);
-  ctx.fillText(`Date: ${date}`, W - 40, 94);
-  ctx.textAlign = 'left';
-  
-  // Divider
-  ctx.strokeStyle = '#ddd';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(30, 155);
-  ctx.lineTo(W - 30, 155);
-  ctx.stroke();
-  
-  // Bill To
-  ctx.fillStyle = '#B8973A';
-  ctx.font = 'bold 11px Arial';
-  ctx.fillText('BILL TO:', 40, 178);
-  ctx.fillStyle = '#1C1C1C';
-  ctx.font = 'bold 17px serif';
-  ctx.fillText(customerName, 40, 198);
-  ctx.fillStyle = '#666';
-  ctx.font = '13px Arial';
-  ctx.fillText(city, 40, 216);
-  
-  // Table header
-  const tableY = headerH + 60;
-  ctx.fillStyle = '#1C1C1C';
-  ctx.fillRect(30, tableY, W - 60, 36);
-  
-  ctx.fillStyle = '#FAFAF8';
-  ctx.font = 'bold 12px Arial';
-  ctx.fillText('ITEM', 50, tableY + 23);
-  ctx.textAlign = 'center';
-  ctx.fillText('QTY', 320, tableY + 23);
-  ctx.fillText('RATE', 420, tableY + 23);
-  ctx.textAlign = 'right';
-  ctx.fillText('AMOUNT', W - 50, tableY + 23);
-  ctx.textAlign = 'left';
-  
-  // Items
   let total = 0;
-  items.forEach((item, i) => {
-    const y = tableY + 36 + (i * itemRowH);
+  let itemLines = '';
+  
+  items.forEach(item => {
     const amount = item.qty * item.rate;
     total += amount;
-    
-    ctx.fillStyle = i % 2 === 0 ? '#fff' : '#F9F7F4';
-    ctx.fillRect(30, y, W - 60, itemRowH);
-    
-    ctx.fillStyle = '#1C1C1C';
-    ctx.font = '14px serif';
-    ctx.fillText(`${item.type} Bale`, 50, y + 27);
-    
-    ctx.textAlign = 'center';
-    ctx.font = '13px Arial';
-    ctx.fillText(item.qty, 320, y + 27);
-    ctx.fillText(`₹${item.rate.toLocaleString('en-IN')}`, 420, y + 27);
-    ctx.textAlign = 'right';
-    ctx.font = 'bold 14px Arial';
-    ctx.fillText(`₹${amount.toLocaleString('en-IN')}`, W - 50, y + 27);
-    ctx.textAlign = 'left';
+    itemLines += `
+│ ${item.type.padEnd(12)} │ ${String(item.qty).padStart(3)} │ ₹${String(item.rate.toLocaleString('en-IN')).padStart(8)} │ ₹${String(amount.toLocaleString('en-IN')).padStart(9)} │`;
   });
-  
-  // Total box
-  const totalY = tableY + 36 + (items.length * itemRowH) + 12;
-  
-  ctx.strokeStyle = '#B8973A';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(W - 220, totalY, 190, 50);
-  
-  ctx.fillStyle = '#B8973A';
-  ctx.font = 'bold 13px Arial';
-  ctx.textAlign = 'right';
-  ctx.fillText('TOTAL AMOUNT:', W - 50, totalY + 20);
-  ctx.fillStyle = '#1C1C1C';
-  ctx.font = 'bold 20px serif';
-  ctx.fillText(`₹${total.toLocaleString('en-IN')}`, W - 50, totalY + 44);
-  ctx.textAlign = 'left';
-  
-  // Footer
-  const footerY = H - footerH + 20;
-  ctx.strokeStyle = '#ddd';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(30, footerY);
-  ctx.lineTo(W - 30, footerY);
-  ctx.stroke();
-  
-  ctx.fillStyle = '#888';
-  ctx.font = '11px Arial';
-  ctx.fillText('Thank you for your business!', 40, footerY + 25);
-  ctx.fillStyle = '#B8973A';
-  ctx.font = 'bold 11px Arial';
-  ctx.fillText('Kubra Traders — Rajkot, Gujarat — +91 94275 65814', 40, footerY + 45);
-  
-  // Save image
-  const filename = `/tmp/invoice_${Date.now()}.png`;
-  const buffer = canvas.toBuffer('image/png');
-  fs.writeFileSync(filename, buffer);
-  return filename;
+
+  const invoice = `
+╔══════════════════════════════════════╗
+║         🏪 KUBRA TRADERS             ║
+║    Wholesale Branded Second-Hand     ║
+║   📍 Rajkot, Gujarat                 ║
+║   📞 +91 94275 65814                 ║
+╠══════════════════════════════════════╣
+║  INVOICE No: ${invoiceNo.padEnd(23)}║
+║  Date: ${date.padEnd(29)}║
+╠══════════════════════════════════════╣
+║  Bill To: ${customerName.padEnd(27)}║
+║  City: ${city.padEnd(29)}║
+╠══════════════════════════════════════╣
+│ Item         │ Qty │     Rate │    Amount │
+├──────────────┼─────┼──────────┼───────────┤${itemLines}
+├──────────────┴─────┴──────────┼───────────┤
+│                          TOTAL │ ₹${String(total.toLocaleString('en-IN')).padStart(8)} │
+╚════════════════════════════════╧═══════════╝
+       🙏 Thank you for your business!
+`;
+  return { text: invoice, total };
 }
 
 // Parse bill command
-// Format: bill CustomerName City mens 2 4500 ladies 1 3800 kids 1 2500
 function parseBill(text) {
-  const t = text.trim();
-  const match = t.match(/^bill\s+(\S+)\s+(\S+)\s+(.+)$/i);
+  const match = text.trim().match(/^bill\s+(\S+)\s+(\S+)\s+(.+)$/i);
   if (!match) return null;
   
   const customerName = match[1];
@@ -303,25 +166,17 @@ bot.on('message', async (msg) => {
 \`bill Ravi Mumbai mens 2 4500 ladies 1 3800\``, { parse_mode: 'Markdown' });
   }
 
-  // Bill command
   if (text.toLowerCase().startsWith('bill ')) {
     const billData = parseBill(text);
     if (!billData) {
-      return bot.sendMessage(chatId, `❓ Format sahi nahi.\nExample:\n\`bill Ravi Mumbai mens 2 4500 ladies 1 3800\``, { parse_mode: 'Markdown' });
+      return bot.sendMessage(chatId, `❓ Format:\n\`bill Ravi Mumbai mens 2 4500 ladies 1 3800\``, { parse_mode: 'Markdown' });
     }
     
-    try {
-      await bot.sendMessage(chatId, '⏳ Invoice ban raha hai...');
-      const date = new Date().toLocaleDateString('en-IN');
-      const invoiceNo = `KT-${String(invoiceCounter++).padStart(4, '0')}`;
-      
-      const filename = await generateInvoice({ ...billData, invoiceNo, date });
-      await bot.sendPhoto(chatId, filename, { caption: `✅ Invoice ready!\n👤 ${billData.customerName} — ${billData.city}\n📅 ${date}\n🧾 ${invoiceNo}` });
-      fs.unlinkSync(filename);
-    } catch (err) {
-      console.error(err);
-      bot.sendMessage(chatId, `⚠️ Error: ${err.message}`);
-    }
+    const date = new Date().toLocaleDateString('en-IN');
+    const invoiceNo = `KT-${String(invoiceCounter++).padStart(4, '0')}`;
+    const { text: invoiceText, total } = generateInvoiceText({ ...billData, invoiceNo, date });
+    
+    await bot.sendMessage(chatId, `\`\`\`${invoiceText}\`\`\`\n✅ Total: ₹${total.toLocaleString('en-IN')}`, { parse_mode: 'Markdown' });
     return;
   }
 
@@ -373,6 +228,5 @@ bot.on('message', async (msg) => {
 });
 
 // Keep alive
-const http = require('http');
 http.createServer((req, res) => res.end('AlKubra Hisab Bot Running')).listen(process.env.PORT || 3000);
 console.log('AlKubra Hisab Bot started...');
